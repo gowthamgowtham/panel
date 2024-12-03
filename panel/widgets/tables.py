@@ -44,7 +44,7 @@ if TYPE_CHECKING:
     from pyviz_comms import Comm
 
     from ..models.tabulator import (
-        CellClickEvent, SelectionEvent, TableEditEvent,
+        CellClickEvent, SelectionEvent, TableEditEvent, MenuClickEvent
     )
 
 
@@ -1246,6 +1246,7 @@ class Tabulator(BaseTable):
         import pandas.io.formats.style
         click_handler = params.pop('on_click', None)
         edit_handler = params.pop('on_edit', None)
+        menu_click_handler = params.pop('on_menu_click', None)
         if isinstance(value, pandas.io.formats.style.Styler):
             style = value
             value = value.data
@@ -1259,6 +1260,7 @@ class Tabulator(BaseTable):
         self._explicit_pagination = 'pagination' in params
         self._on_edit_callbacks = []
         self._on_click_callbacks = {}
+        self._on_menu_click_callbacks = []
         self._old_value = None
         super().__init__(value=value, **params)
         self._configuration = configuration
@@ -1268,6 +1270,8 @@ class Tabulator(BaseTable):
             self.on_click(click_handler)
         if edit_handler:
             self.on_edit(edit_handler)
+        if menu_click_handler:
+            self.on_menu_click(menu_click_handler)
         if style is not None:
             self.style._todo = style._todo
         self.param.selection.callable = self._get_selectable
@@ -1332,6 +1336,11 @@ class Tabulator(BaseTable):
         if event.event_name == 'selection-change':
             if self.pagination == 'remote':
                 self._update_selection(event)
+            return
+        
+        if event.event_name == 'menu-click':
+            for cb in self._on_menu_click_callbacks:
+                state.execute(partial(cb, event), schedule=False)
             return
 
         event_col = self._renamed_cols.get(event.column, event.column)
@@ -1824,8 +1833,21 @@ class Tabulator(BaseTable):
         model.expanded = expanded
         model.children = self._get_model_children(doc, root, parent, comm)
         self._link_props(model, ['page', 'sorters', 'expanded', 'filters', 'page_size'], doc, root, comm)
-        self._register_events('cell-click', 'table-edit', 'selection-change', model=model, doc=doc, comm=comm)
+        self._register_events('cell-click', 'table-edit', 'selection-change', 'menu-click', model=model, doc=doc, comm=comm)
         return model
+    
+    def on_menu_click(self, callback: Callable[[MenuClickEvent], None]):
+        """
+        Register a callback to be executed when user clicks a menu entry.
+        The callback is given a MenuClickEvent containing the label of
+        the menu item clicked and the row of table that was clicked.
+
+        Arguments
+        ---------
+        callback: (callable)
+            The callback to run on menu click events
+        """
+        self._on_menu_click_callbacks.append(callback)
 
     def _get_filter_spec(self, column: TableColumn) -> dict[str, Any]:
         fspec = {}

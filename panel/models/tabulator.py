@@ -97,6 +97,19 @@ class CellClickEvent(ModelEvent):
             f'value={self.value})'
         )
 
+class MenuClickEvent(ModelEvent):
+
+    event_name = 'menu-click'
+
+    def __init__(self, model, label, row):
+        self.label = label
+        self.row = row
+        super().__init__(model=model)
+
+    def __repr__(self):
+        return (
+            f'{type(self).__name__}(label={self.label}, row={self.row})'
+        )
 
 CSS_URLS = []
 for theme in TABULATOR_THEMES:

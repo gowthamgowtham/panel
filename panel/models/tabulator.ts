@@ -62,6 +62,20 @@ export class SelectionEvent extends ModelEvent {
   }
 }
 
+export class MenuClickEvent extends ModelEvent {
+  constructor(readonly label: string, readonly row: any) {
+    super()
+  }
+
+  protected override get event_values(): Attrs {
+    return {model: this.origin, label: this.label, row: this.row}
+  }
+
+  static {
+    this.prototype.event_name = "menu-click"
+  }
+}
+
 declare const Tabulator: any
 
 function find_group(key: any, value: string, records: any[]): any {
@@ -561,6 +575,21 @@ export class DataTabulatorView extends HTMLBoxView {
     }
   }
 
+  _processMenu(cfg: any) {
+    if ('rowContextMenu' in cfg) {
+      for (let m of cfg['rowContextMenu']) {
+        if ('separator' in m) {
+          continue
+        }
+        let _this = this
+        m['action'] = function(_e: any, row: any) {
+          const event = new MenuClickEvent(m['label'], row._row.data)
+          _this.model.trigger_event(event)
+        }
+      }
+    }
+  }
+
   override render(): void {
     if (this.tabulator != null) {
       this.tabulator.destroy()
@@ -576,6 +605,7 @@ export class DataTabulatorView extends HTMLBoxView {
     this.shadow_el.appendChild(container)
 
     const configuration = this.getConfiguration()
+    this._processMenu(configuration)
     this.tabulator = new Tabulator(el, configuration)
     this.watch_stylesheets()
     this.init_callbacks()
