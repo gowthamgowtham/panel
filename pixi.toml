@@ -18,7 +18,7 @@ install = 'python -m pip install --no-deps --disable-pip-version-check -e .'
 # test-ui = ["py312", "test-core", "test", "test-ui"]
 # test-core = ["py313", "test-core", "test-unit-task"]
 # test-minimum = ["py310", "test-core", "test-unit-task", "test-minimum"]
-# test-type = ["py311", "type"]
+# test-type = ["py311", "type", "example", "test"]
 docs = ["py311", "example", "doc"]
 build = ["py311", "build"]
 lint = ["py311", "lint"]
@@ -54,8 +54,14 @@ python = "3.11.*"
 [feature.py312.dependencies]
 python = "3.12.*"
 
+[feature.py312.activation.env]
+COVERAGE_CORE = "sysmon"
+
 [feature.py313.dependencies]
 python = "3.13.*"
+
+[feature.py313.activation.env]
+COVERAGE_CORE = "sysmon"
 
 [feature.example.dependencies]
 # Optional dependencies - recommended
@@ -90,6 +96,7 @@ pyinstrument = ">=4.0"
 python-graphviz = "*"
 pyvista = "*"
 reacton = "*"
+s3fs = ">=2023"  # Python 3.9 pull in 0.6.0
 scikit-image = "*"
 scikit-learn = "*"
 seaborn = "*"
@@ -136,6 +143,7 @@ altair = "*"
 anywidget = "*"
 bokeh-fastapi = "*"
 bokeh_sampledata = "*"
+cryptography = "*"
 diskcache = "*"
 fastapi = "*"
 folium = "*"
@@ -174,14 +182,15 @@ packaging = "*"
 _install-ui = 'playwright install chromium'
 
 [feature.test-ui.tasks.test-ui]
-cmd = 'pytest panel/tests/ui --ui --browser chromium -n logical --dist loadgroup --reruns 3 --reruns-delay 10'
-depends_on = ["_install-ui"]
+cmd = 'pytest panel/tests/ui --ui --browser chromium -n logical --dist loadgroup'
+depends-on = ["_install-ui"]
 
 # =============================================
 # ================== TYPES ====================
 # =============================================
 [feature.type.dependencies]
 mypy = "*"
+pytest = "*"
 pandas-stubs = "*"
 types-bleach = "*"
 types-croniter = "*"
@@ -201,14 +210,16 @@ test-type = 'mypy panel'
 MOZ_HEADLESS = "1"
 PANEL_IPYWIDGET = "1"
 OBJC_DISABLE_INITIALIZE_FORK_SAFETY = "YES"
+SPHINX_APIDOC_OPTIONS = "members,show-inheritance"
 
 [feature.doc.dependencies]
 lxml = "*"
 nbsite = ">=0.8.6rc9"
 selenium = "*"
+numpydoc = "*"
 
 [feature.doc.tasks]
-_docs-refmanual = 'python ./doc/generate_modules.py panel -d ./doc/api -n panel -e tests'
+_docs-refmanual = 'sphinx-apidoc -e -o doc/api/ panel/ --ext-autodoc --ext-intersphinx'
 _docs-convert-gallery = 'python scripts/gallery/convert_gallery.py'
 _docs-generate = 'nbsite build --what=html --output=builtdocs --org holoviz --project-name panel --disable-parallel'
 _docs-generate-parallel = 'nbsite build --what=html --output=builtdocs --org holoviz --project-name panel'
@@ -217,7 +228,7 @@ _docs-pyodide = 'panel convert examples/gallery/*.ipynb doc/how_to/*/examples/*.
 docs-server = 'python -m http.server 5500 --directory ./builtdocs'
 
 [feature.doc.tasks.docs-build]
-depends_on = [
+depends-on = [
     '_docs-refmanual',
     '_docs-convert-gallery',
     '_docs-generate',
@@ -226,7 +237,7 @@ depends_on = [
 ]
 
 [feature.doc.tasks.docs-build-parallel]
-depends_on = [
+depends-on = [
     '_docs-refmanual',
     '_docs-convert-gallery',
     '_docs-generate-parallel',

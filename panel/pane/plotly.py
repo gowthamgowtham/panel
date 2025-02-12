@@ -4,9 +4,8 @@ bokeh model.
 """
 from __future__ import annotations
 
-from typing import (
-    TYPE_CHECKING, Any, ClassVar, Mapping, Optional,
-)
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
 import param
@@ -46,6 +45,8 @@ class Plotly(ModelPane):
     """
 
     click_data = param.Dict(doc="Click event data from `plotly_click` event.")
+
+    doubleclick_data = param.Dict(doc="Click event data from `plotly_doubleclick` event.")
 
     clickannotation_data = param.Dict(doc="Clickannotation event data from `plotly_clickannotation` event.")
 
@@ -89,8 +90,13 @@ class Plotly(ModelPane):
     _updates: ClassVar[bool] = True
 
     _rename: ClassVar[Mapping[str, str | None]] = {
-        'link_figure': None, 'object': None, 'click_data': None, 'clickannotation_data': None,
-        'hover_data': None, 'selected_data': None
+        'link_figure': None,
+        'object': None,
+        'doubleclick_data': None,
+        'click_data': None,
+        'clickannotation_data': None,
+        'hover_data': None,
+        'selected_data': None
     }
 
     @classmethod
@@ -107,7 +113,7 @@ class Plotly(ModelPane):
 
     def _to_figure(self, obj):
         import plotly.graph_objs as go
-        if isinstance(obj, go.Figure):
+        if isinstance(obj, (go.Figure, go.FigureWidget)):
             return obj
         elif isinstance(obj, dict):
             data, layout = obj['data'], obj['layout']
@@ -150,17 +156,15 @@ class Plotly(ModelPane):
     def _update_figure(self):
         import plotly.graph_objs as go
 
-        if (self.object is None or type(self.object) is not go.Figure or
+        if (self.object is None or type(self.object) not in (go.Figure, go.FigureWidget) or
             self.object is self._figure or not self.link_figure):
             return
 
         # Monkey patch the message stubs used by FigureWidget.
-        # We only patch `Figure` objects (not subclasses like FigureWidget) so
-        # we don't interfere with subclasses that override these methods.
         fig = self.object
         fig._send_addTraces_msg = lambda *_, **__: self._update_from_figure('add')
-        fig._send_moveTraces_msg = lambda *_, **__: self._update_from_figure('move')
         fig._send_deleteTraces_msg = lambda *_, **__: self._update_from_figure('delete')
+        fig._send_moveTraces_msg = lambda *_, **__: self._update_from_figure('move')
         fig._send_restyle_msg = self._send_restyle_msg
         fig._send_relayout_msg = self._send_relayout_msg
         fig._send_update_msg = self._send_update_msg
@@ -311,24 +315,92 @@ class Plotly(ModelPane):
         return props
 
     def _get_model(
-        self, doc: Document, root: Optional[Model] = None,
-        parent: Optional[Model] = None, comm: Optional[Comm] = None
+        self, doc: Document, root: Model | None = None,
+        parent: Model | None = None, comm: Comm | None = None
     ) -> Model:
-        if not hasattr(self, '_bokeh_model'):
-            self._bokeh_model = lazy_load(
-                'panel.models.plotly', 'PlotlyPlot', isinstance(comm, JupyterComm), root
-            )
+        Plotly._bokeh_model = lazy_load(
+            'panel.models.plotly', 'PlotlyPlot', isinstance(comm, JupyterComm), root
+        )
         model = super()._get_model(doc, root, parent, comm)
         self._register_events('plotly_event', model=model, doc=doc, comm=comm)
         return model
 
     def _process_event(self, event):
         etype = event.data['type']
+        data = event.data['data']
         pname = f'{etype}_data'
-        if getattr(self, pname) == event.data['data']:
+        if getattr(self, pname) == data:
             self.param.trigger(pname)
         else:
-            self.param.update(**{pname: event.data['data']})
+            self.param.update(**{pname: data})
+
+        if data is None or not hasattr(self.object, '_handler_js2py_pointsCallback'):
+            return
+
+        points = data['points']
+        num_points = len(points)
+
+        has_nested_point_objects = True
+        for point_obj in points:
+            has_nested_point_objects = has_nested_point_objects and 'pointNumbers' in point_obj
+            if not has_nested_point_objects:
+                break
+
+        num_point_numbers = num_points
+        if has_nested_point_objects:
+            num_point_numbers = 0
+            for point_obj in points:
+                num_point_numbers += len(point_obj['pointNumbers'])
+
+        points_object = {
+            'trace_indexes': [],
+            'point_indexes': [],
+            'xs': [],
+            'ys': [],
+        }
+
+        # Add z if present
+        has_z = points[0] is not None and 'z' in points[0]
+        if has_z:
+            points_object['zs'] = []
+
+        if has_nested_point_objects:
+            for point_obj in points:
+                for i in range(len(point_obj['pointNumbers'])):
+                    points_object['point_indexes'].append(point_obj['pointNumbers'][i])
+                    points_object['xs'].append(point_obj['x'])
+                    points_object['ys'].append(point_obj['y'])
+                    points_object['trace_indexes'].append(point_obj['curveNumber'])
+                    if has_z and 'z' in point_obj:
+                        points_object['zs'].append(point_obj['z'])
+
+            single_trace = True
+            for i in range(1, num_point_numbers):
+                single_trace = single_trace and (points_object['trace_indexes'][i - 1] == points_object['trace_indexes'][i])
+                if not single_trace:
+                    break
+
+            if single_trace:
+                points_object['point_indexes'].sort()
+        else:
+            for point_obj in points:
+                points_object['trace_indexes'].append(point_obj['curveNumber'])
+                points_object['point_indexes'].append(point_obj['pointNumber'])
+                points_object['xs'].append(point_obj['x'])
+                points_object['ys'].append(point_obj['y'])
+                if has_z and 'z' in point_obj:
+                    points_object['zs'].append(point_obj['z'])
+
+        self._figure._handler_js2py_pointsCallback(
+            {
+                "new": dict(
+                    event_type=f'plotly_{etype}',
+                    points=points_object,
+                    selector=data.get('selector', None),
+                    device_state=data.get('device_state', None)
+                )
+            }
+        )
 
     def _update(self, ref: str, model: Model) -> None:
         if self.object is None:
@@ -381,7 +453,7 @@ class Plotly(ModelPane):
         except Exception:
             update_frames = True
 
-        updates = {}
+        updates: dict[str, Any] = {}
         if self.sizing_mode is self.param.sizing_mode.default and 'autosize' in layout:
             autosize = layout.get('autosize')
             styles = dict(model.styles)

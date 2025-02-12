@@ -86,6 +86,7 @@ html_theme_options = {
 
 
 extensions = [
+    'numpydoc',
     'bokeh.sphinxext.bokeh_plot',
     'myst_parser',
     'sphinx_design',
@@ -103,6 +104,9 @@ extensions = [
     'nbsite.pyodide',
     'nbsite.analytics',
 ]
+
+numpydoc_show_inherited_class_members = False
+numpydoc_class_members_toctree = False
 napoleon_numpy_docstring = True
 
 autodoc_mock_imports = ["panel.pane.vtk"]
@@ -111,7 +115,7 @@ myst_enable_extensions = ["colon_fence", "deflist"]
 
 gallery_endpoint = 'panel-gallery-dev' if is_dev else 'panel-gallery'
 gallery_url = f'https://{gallery_endpoint}.holoviz-demo.anaconda.com'
-jlite_url = 'https://holoviz-dev.github.io/panelite-dev' if is_dev else 'https://panelite.holoviz.org'
+jlite_url = 'https://holoviz-dev.github.io/panelite-dev/lab' if is_dev else 'https://panelite.holoviz.org/lab'
 pyodide_url = 'https://holoviz-dev.github.io/panel/pyodide' if is_dev else 'https://panel.holoviz.org/pyodide'
 
 rediraffe_redirects = {
