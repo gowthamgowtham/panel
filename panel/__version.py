@@ -6,7 +6,7 @@ Called __version.py as setuptools_scm will create a _version.py
 import os.path
 
 PACKAGE = "panel"
-__version__ = '1.5.5'
+__version__ = '1.6.0'
 
 # try:
 #     # For performance reasons on imports, avoid importing setuptools_scm
